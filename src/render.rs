@@ -54,26 +54,26 @@ impl Renderer {
 
         surface.configure(&device, &config);
 
-        let shader_module = device.create_shader_module(ShaderModuleDescriptor {
+        let module = &device.create_shader_module(ShaderModuleDescriptor {
             label: None,
             source: ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+        let pipeline = device.create_mesh_pipeline(&MeshPipelineDescriptor {
             label: None,
             cache: None,
             layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
                 bind_group_layouts: &[],
                 ..Default::default()
             })),
-            vertex: VertexState {
-                module: &shader_module,
+            task: None,
+            mesh: MeshState {
+                module,
                 entry_point: None,
-                buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(FragmentState {
-                module: &shader_module,
+                module,
                 entry_point: None,
                 targets: &[Some(ColorTargetState {
                     format: config.format,
@@ -93,7 +93,7 @@ impl Renderer {
             },
             multisample: MultisampleState::default(),
             depth_stencil: None,
-            multiview_mask: None,
+            multiview: None,
         });
 
         Renderer {
@@ -135,7 +135,7 @@ impl Renderer {
             ..Default::default()
         });
         pass.set_pipeline(&self.pipeline);
-        pass.draw(0..6, 0..1);
+        pass.draw_mesh_tasks(1, 1, 1);
         drop(pass);
 
         self.queue.submit(Some(encoder.finish()));

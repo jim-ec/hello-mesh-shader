@@ -91,7 +91,7 @@ impl Renderer {
                 strip_index_format: None,
                 front_face: FrontFace::Ccw,
                 cull_mode: Some(Face::Back),
-                polygon_mode: PolygonMode::Fill,
+                polygon_mode: PolygonMode::Line,
                 unclipped_depth: false,
                 conservative: false,
             },

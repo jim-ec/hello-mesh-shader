@@ -1,8 +1,7 @@
 enable wgpu_mesh_shader;
 
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) color: vec3<f32>,
+struct TaskPayload {
+    color: vec3<f32>,
 }
 
 struct MeshOutput {
@@ -17,9 +16,25 @@ struct PrimitiveOutput {
     @builtin(cull_primitive) cull: bool,
 }
 
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec3<f32>,
+}
+
+var<task_payload> payload: TaskPayload;
+
+@task
+@payload(payload)
+@workgroup_size(1)
+fn task() -> @builtin(mesh_task_size) vec3<u32> {
+    payload.color = vec3(0.0, 0.0, 1.0);
+    return vec3(1, 1, 1);
+}
+
 var<workgroup> out: MeshOutput;
 
 @mesh(out)
+@payload(payload)
 @workgroup_size(1)
 fn mesh() {
     out.vertex_count = 3;
@@ -31,7 +46,7 @@ fn mesh() {
         let uv = vec2<f32>(id);
 
         out.vertices[i].position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
-        out.vertices[i].color = vec3(uv, 0.0);
+        out.vertices[i].color = payload.color + vec3(uv, 0.0);
     }
 
     out.primitives[0].indices = vec3(0, 1, 2);

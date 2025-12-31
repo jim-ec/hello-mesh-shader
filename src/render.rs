@@ -66,7 +66,11 @@ impl Renderer {
                 bind_group_layouts: &[],
                 ..Default::default()
             })),
-            task: None,
+            task: Some(TaskState {
+                module,
+                entry_point: None,
+                compilation_options: Default::default(),
+            }),
             mesh: MeshState {
                 module,
                 entry_point: None,

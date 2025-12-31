@@ -4,9 +4,14 @@ struct TaskPayload {
     color: vec3<f32>,
 }
 
+const N: u32 = 12;
+
+const VERTEX_COUNT: u32 = N * N;
+const TRI_COUNT: u32 = 2 * (N - 1) * (N - 1);
+
 struct MeshOutput {
-    @builtin(vertices) vertices: array<VertexOutput, 6>,
-    @builtin(primitives) primitives: array<PrimitiveOutput, 2>,
+    @builtin(vertices) vertices: array<VertexOutput, VERTEX_COUNT>,
+    @builtin(primitives) primitives: array<PrimitiveOutput, TRI_COUNT>,
     @builtin(vertex_count) vertex_count: u32,
     @builtin(primitive_count) primitive_count: u32,
 }
@@ -37,27 +42,34 @@ var<workgroup> out: MeshOutput;
 @payload(payload)
 @workgroup_size(1)
 fn mesh() {
-    out.vertex_count = 6;
-    out.primitive_count = 2;
+    out.vertex_count = VERTEX_COUNT;
+    out.primitive_count = TRI_COUNT;
 
-    for (var i = 0u; i < 6u; i++) {
-        // #0: (0, 0) (0, 1) (1, 0)
-        // #1: (1, 0) (0, 1) (1, 1)
-        // X: 001101 => 0x0d
-        // Y: 010011 => 0x13
-        let id = (vec2(0x0du, 0x13u) >> vec2(i)) & vec2(1u);
-        let uv = vec2<f32>(id);
-
-        out.vertices[i].position = vec4(0.9 * (uv * 2.0 - 1.0), 0.0, 1.0);
-        out.vertices[i].color = payload.color + vec3(uv, 0.0);
+    for (var i = 0u; i < N; i++) {
+        for (var j = 0u; j < N; j++) {
+            let vertex_index = i * N + j;
+            out.vertices[vertex_index].position = vec4(0.9 * (vec2(f32(i), f32(j)) / f32(N - 1) * 2.0 - 1.0), 0.0, 1.0);
+            out.vertices[vertex_index].color = payload.color + vec3(f32(i), f32(j), 0.0) / f32(N - 1);
+        }
     }
 
-    // TODO: Move into loop
-    // TODO: Share vertices
-    out.primitives[0].indices = vec3(0, 1, 2);
-    out.primitives[0].cull = false;
-    out.primitives[1].indices = vec3(3, 4, 5);
-    out.primitives[1].cull = false;
+    for (var i = 0u; i < N - 1; i++) {
+        for (var j = 0u; j < N - 1; j++) {
+            // A - B
+            // | \ |
+            // C - D
+            // #0: A C D
+            // #1: D B A
+            let a = (i + 0) * N + (j + 0);
+            let b = (i + 0) * N + (j + 1);
+            let c = (i + 1) * N + (j + 0);
+            let d = (i + 1) * N + (j + 1);
+            let quad_index = i * (N - 1) + j;
+            out.primitives[2 * quad_index + 0].indices = vec3(a, c, d);
+            out.primitives[2 * quad_index + 1].indices = vec3(d, b, a);
+            out.primitives[2 * quad_index + 1].cull = true;
+        }
+    }
 }
 
 @fragment

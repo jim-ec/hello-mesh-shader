@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use glam::{Mat4, Vec4};
 use wgpu::*;
 use winit::window::Window;
 
@@ -11,27 +10,6 @@ pub struct Renderer {
     device: Device,
     queue: Queue,
     pipeline: RenderPipeline,
-    uniform_buffer: Buffer,
-    depth_texture: Texture,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct Uniforms {
-    #[allow(dead_code)]
-    model: Mat4,
-    #[allow(dead_code)]
-    view: Mat4,
-    #[allow(dead_code)]
-    projection: Mat4,
-}
-
-fn as_byte_slice<T>(slice: &[T]) -> &[u8] {
-    unsafe {
-        std::slice::from_raw_parts(
-            slice.as_ptr() as *const u8,
-            slice.len() * std::mem::size_of::<T>(),
-        )
-    }
 }
 
 impl Renderer {
@@ -76,13 +54,6 @@ impl Renderer {
 
         surface.configure(&device, &config);
 
-        let uniform_buffer = device.create_buffer(&BufferDescriptor {
-            label: None,
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            size: std::mem::size_of::<Uniforms>() as u64,
-            mapped_at_creation: false,
-        });
-
         let shader_module = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
             source: ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
@@ -92,21 +63,7 @@ impl Renderer {
             label: None,
             cache: None,
             layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                bind_group_layouts: &[&device.create_bind_group_layout(
-                    &BindGroupLayoutDescriptor {
-                        label: None,
-                        entries: &[BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: ShaderStages::VERTEX,
-                            ty: BindingType::Buffer {
-                                ty: BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        }],
-                    },
-                )],
+                bind_group_layouts: &[],
                 ..Default::default()
             })),
             vertex: VertexState {
@@ -134,37 +91,10 @@ impl Renderer {
                 unclipped_depth: false,
                 conservative: false,
             },
-            multisample: MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            depth_stencil: Some(DepthStencilState {
-                format: TextureFormat::Depth24Plus,
-                depth_write_enabled: true,
-                depth_compare: CompareFunction::LessEqual,
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
+            multisample: MultisampleState::default(),
+            depth_stencil: None,
             multiview_mask: None,
         });
-
-        let depth_texture = device.create_texture(
-            &(TextureDescriptor {
-                label: None,
-                size: Extent3d {
-                    width: config.width,
-                    height: config.height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: TextureDimension::D2,
-                format: TextureFormat::Depth24Plus,
-                view_formats: &[],
-                usage: TextureUsages::RENDER_ATTACHMENT,
-            }),
-        );
 
         Renderer {
             surface,
@@ -172,12 +102,10 @@ impl Renderer {
             device,
             queue,
             pipeline,
-            uniform_buffer,
-            depth_texture,
         }
     }
 
-    pub fn render(&mut self, view: Mat4) {
+    pub fn render(&mut self) {
         let surface_texture = self
             .surface
             .get_current_texture()
@@ -185,32 +113,6 @@ impl Renderer {
         let surface_texture_view = surface_texture
             .texture
             .create_view(&TextureViewDescriptor::default());
-        let depth_texture_view = self
-            .depth_texture
-            .create_view(&TextureViewDescriptor::default());
-
-        self.queue.write_buffer(
-            &self.uniform_buffer,
-            0,
-            as_byte_slice(&[Uniforms {
-                model: Mat4::IDENTITY,
-                view,
-                projection: {
-                    let fovy = 60.0_f32.to_radians();
-                    let near = 0.1;
-                    let far = 100.0;
-
-                    let aspect = self.config.width as f32 / self.config.height as f32;
-                    let tan_half_fovy = (0.5 * fovy).tan();
-                    Mat4::from_cols(
-                        Vec4::new(1.0 / (aspect * tan_half_fovy), 0.0, 0.0, 0.0),
-                        Vec4::new(0.0, 1.0 / tan_half_fovy, 0.0, 0.0),
-                        Vec4::new(0.0, 0.0, -(far + near) / (far - near), -1.0),
-                        Vec4::new(0.0, 0.0, -2.0 * far * near / (far - near), 0.0),
-                    )
-                },
-            }]),
-        );
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
@@ -229,28 +131,9 @@ impl Renderer {
                     store: StoreOp::Store,
                 },
             })],
-            depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                view: &depth_texture_view,
-                depth_ops: Some(Operations {
-                    load: LoadOp::Clear(1.0),
-                    store: StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
+            depth_stencil_attachment: None,
             ..Default::default()
         });
-        pass.set_bind_group(
-            0,
-            &self.device.create_bind_group(&BindGroupDescriptor {
-                label: None,
-                layout: &self.pipeline.get_bind_group_layout(0),
-                entries: &[BindGroupEntry {
-                    binding: 0,
-                    resource: self.uniform_buffer.as_entire_binding(),
-                }],
-            }),
-            &[],
-        );
         pass.set_pipeline(&self.pipeline);
         pass.draw(0..6, 0..1);
         drop(pass);
@@ -266,22 +149,5 @@ impl Renderer {
         self.config.width = size.width;
         self.config.height = size.height;
         self.surface.configure(&self.device, &self.config);
-
-        self.depth_texture = self.device.create_texture(
-            &(wgpu::TextureDescriptor {
-                label: None,
-                size: wgpu::Extent3d {
-                    width: self.config.width,
-                    height: self.config.height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: TextureFormat::Depth24Plus,
-                view_formats: &[],
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            }),
-        );
     }
 }

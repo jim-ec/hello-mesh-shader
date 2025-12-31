@@ -39,26 +39,19 @@ fn as_byte_slice<T>(slice: &[T]) -> &[u8] {
 
 impl Renderer {
     pub async fn new(window: Arc<Window>) -> Self {
-        let instance = Instance::new(&InstanceDescriptor {
-            flags: InstanceFlags::advanced_debugging(), // | InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER
-            ..Default::default()
-        });
+        let instance = Instance::new(&InstanceDescriptor::default());
         let surface = instance
             .create_surface(window.clone())
             .expect("Cannot create surface");
 
-        let required_features = wgpu::Features::EXPERIMENTAL_MESH_SHADER;
-        let required_limits = Limits::defaults().using_recommended_minimum_mesh_shader_values();
-
         let adapter = instance
-            .enumerate_adapters(Backends::VULKAN)
-            .await
-            .into_iter()
-            .find(|adapter| {
-                adapter.features().contains(required_features)
-                    && required_limits.check_limits(&adapter.limits())
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: true,
+                power_preference: wgpu::PowerPreference::None,
             })
-            .expect("No adapter found with Mesh Shader support!");
+            .await
+            .expect("No adapter found");
 
         println!("GPU: {}", adapter.get_info().name);
         println!("Render Backend: {:?}", adapter.get_info().backend);
@@ -66,8 +59,8 @@ impl Renderer {
         let (device, queue) = adapter
             .request_device(&DeviceDescriptor {
                 experimental_features: unsafe { wgpu::ExperimentalFeatures::enabled() },
-                required_features,
-                required_limits,
+                required_features: wgpu::Features::EXPERIMENTAL_MESH_SHADER,
+                required_limits: Limits::defaults().using_recommended_minimum_mesh_shader_values(),
                 ..Default::default()
             })
             .await

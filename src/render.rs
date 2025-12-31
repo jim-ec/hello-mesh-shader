@@ -39,24 +39,37 @@ fn as_byte_slice<T>(slice: &[T]) -> &[u8] {
 
 impl Renderer {
     pub async fn new(window: Arc<Window>) -> Self {
-        let instance = Instance::new(&InstanceDescriptor::default());
+        let instance = Instance::new(&InstanceDescriptor {
+            flags: InstanceFlags::advanced_debugging(), // | InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER
+            ..Default::default()
+        });
         let surface = instance
             .create_surface(window.clone())
             .expect("Cannot create surface");
+
+        let required_features = wgpu::Features::EXPERIMENTAL_MESH_SHADER;
+        let required_limits = Limits::defaults().using_recommended_minimum_mesh_shader_values();
+
         let adapter = instance
-            .request_adapter(&RequestAdapterOptions {
-                compatible_surface: Some(&surface),
-                power_preference: PowerPreference::HighPerformance,
-                ..Default::default()
-            })
+            .enumerate_adapters(Backends::VULKAN)
             .await
-            .expect("No GPU available");
+            .into_iter()
+            .find(|adapter| {
+                adapter.features().contains(required_features)
+                    && required_limits.check_limits(&adapter.limits())
+            })
+            .expect("No adapter found with Mesh Shader support!");
 
         println!("GPU: {}", adapter.get_info().name);
         println!("Render Backend: {:?}", adapter.get_info().backend);
 
         let (device, queue) = adapter
-            .request_device(&DeviceDescriptor::default())
+            .request_device(&DeviceDescriptor {
+                experimental_features: unsafe { wgpu::ExperimentalFeatures::enabled() },
+                required_features,
+                required_limits,
+                ..Default::default()
+            })
             .await
             .unwrap();
 

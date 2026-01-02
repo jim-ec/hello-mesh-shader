@@ -19,23 +19,27 @@ impl Renderer {
             .create_surface(window.clone())
             .expect("Cannot create surface");
 
+        let required_features = wgpu::Features::EXPERIMENTAL_MESH_SHADER;
+        let required_limits = Limits::defaults().using_recommended_minimum_mesh_shader_values();
+
         let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: true,
-                power_preference: wgpu::PowerPreference::None,
-            })
+            .enumerate_adapters(Backends::VULKAN)
             .await
-            .expect("No adapter found");
+            .into_iter()
+            .find(|adapter| {
+                adapter.features().contains(required_features)
+                    && required_limits.check_limits(&adapter.limits())
+            })
+            .expect("No adapter found with Mesh Shader support!");
 
         println!("GPU: {}", adapter.get_info().name);
         println!("Render Backend: {:?}", adapter.get_info().backend);
 
         let (device, queue) = adapter
             .request_device(&DeviceDescriptor {
-                experimental_features: unsafe { ExperimentalFeatures::enabled() },
-                required_features: Features::EXPERIMENTAL_MESH_SHADER | Features::POLYGON_MODE_LINE,
-                required_limits: Limits::defaults().using_recommended_minimum_mesh_shader_values(),
+                experimental_features: unsafe { wgpu::ExperimentalFeatures::enabled() },
+                required_features,
+                required_limits,
                 ..Default::default()
             })
             .await
